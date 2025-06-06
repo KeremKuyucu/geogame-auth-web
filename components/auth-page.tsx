@@ -75,7 +75,7 @@ export default function AuthPage() {
 
   const loginCallback = async (userData: UserData) => {
     try {
-      const response = await fetch("https://keremkk.glitch.me/geogame/login/callback", {
+      const response = await fetch("https://geogame-api.keremkk.com.tr/api/logs/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -115,7 +115,7 @@ export default function AuthPage() {
 
       const userDataObj = {
         uid: user.uid,
-        displayName: displayName,
+        name: displayName,
         profilePicture: profilePicture,
       }
 
@@ -141,7 +141,7 @@ export default function AuthPage() {
       const user = result.user
       const userDataObj = {
         uid: user.uid,
-        displayName: userName || "Misafir",
+        name: userName || "Misafir",
         profilePicture: "https://cdn.glitch.global/e74d89f5-045d-4ad2-94c7-e2c99ed95318/2815428.png?v=1738114346363",
       }
 
