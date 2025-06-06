@@ -115,7 +115,7 @@ export default function AuthPage() {
 
       const userDataObj = {
         uid: user.uid,
-        name: displayName,
+        displayName: displayName,
         profilePicture: profilePicture,
       }
 
@@ -141,7 +141,7 @@ export default function AuthPage() {
       const user = result.user
       const userDataObj = {
         uid: user.uid,
-        name: userName || "Misafir",
+        displayName: userName || "Misafir",
         profilePicture: "https://cdn.glitch.global/e74d89f5-045d-4ad2-94c7-e2c99ed95318/2815428.png?v=1738114346363",
       }
 
