@@ -27,7 +27,7 @@ export default function RootLayout({
         <link
           rel="icon"
           type="image/x-icon"
-          href="https://cdn.glitch.global/e74d89f5-045d-4ad2-94c7-e2c99ed95318/geogame?v=1740171165369"
+          href="https://raw.github.com/KeremKuyucu/GeoGame/main/assets/logo.png"
         />
         <meta name="theme-color" content="#4338ca" />
       </head>
