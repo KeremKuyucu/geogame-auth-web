@@ -6,7 +6,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously } from 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { motion } from "framer-motion"
-import { User, Copy, RefreshCw } from "lucide-react"
+import { User, Copy, RefreshCw, X } from "lucide-react"
 
 // Firebase configuration
 const firebaseConfig = {
@@ -32,6 +32,8 @@ const translations = {
     copyButton: "Copy and Login",
     cancelButton: "Start Over",
     warningCopy: "If the site cannot be closed, copy the Json below and return to the application.",
+    closeTabWarning: "Data copied to clipboard! You can now close this tab and return to the application.",
+    closeTabButton: "Close This Tab",
   },
   tr: {
     loginTitle: "GeoGame Girişi",
@@ -45,6 +47,8 @@ const translations = {
     copyButton: "Kopyala ve Giriş Yap",
     cancelButton: "Yeniden Başla",
     warningCopy: "Site kapatılamazsa, aşağıdaki Json'u kopyalayıp uygulamaya dönün.",
+    closeTabWarning: "Veriler panoya kopyalandı! Artık bu sekmeyi kapatıp uygulamaya dönebilirsiniz.",
+    closeTabButton: "Bu Sekmeyi Kapat",
   },
 }
 
@@ -60,6 +64,7 @@ export default function AuthPage() {
   const [userData, setUserData] = useState<UserData | null>(null)
   const [showWarning, setShowWarning] = useState(false)
   const [showCopyWarning, setShowCopyWarning] = useState(false)
+  const [showCloseTabWarning, setShowCloseTabWarning] = useState(false)
   const [language, setLanguage] = useState("en")
   const [isLoading, setIsLoading] = useState(false)
 
@@ -163,11 +168,21 @@ export default function AuthPage() {
     }
 
     const jsonString = JSON.stringify(formattedData, null, 2)
-    setShowCopyWarning(true)
-
+    
     navigator.clipboard.writeText(jsonString).then(() => {
-      window.close()
+      setShowCopyWarning(false)
+      setShowCloseTabWarning(true)
     })
+  }
+
+  const closeTab = () => {
+    // Try to close the window/tab
+    try {
+      window.close()
+    } catch (error) {
+      // If closing fails, show an alert to close manually
+      alert(language === "tr" ? "Lütfen bu sekmeyi manuel olarak kapatın." : "Please close this tab manually.")
+    }
   }
 
   const t = translations[language as keyof typeof translations]
@@ -248,6 +263,16 @@ export default function AuthPage() {
           className="bg-amber-500/90 backdrop-blur-sm text-white p-4 mb-5 rounded-lg font-medium max-w-md w-full shadow-lg"
         >
           <p>{t.warningCopy}</p>
+        </motion.div>
+      )}
+
+      {showCloseTabWarning && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-green-500/90 backdrop-blur-sm text-white p-4 mb-5 rounded-lg font-medium max-w-md w-full shadow-lg"
+        >
+          <p>{t.closeTabWarning}</p>
         </motion.div>
       )}
 
@@ -340,13 +365,23 @@ export default function AuthPage() {
                 {t.cancelButton}
               </Button>
 
-              <Button
-                className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3 px-5 rounded-xl font-medium transition-all shadow-md hover:shadow-lg"
-                onClick={copyToClipboard}
-              >
-                <Copy className="w-4 h-4 mr-2" />
-                {t.copyButton}
-              </Button>
+              {!showCloseTabWarning ? (
+                <Button
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-3 px-5 rounded-xl font-medium transition-all shadow-md hover:shadow-lg"
+                  onClick={copyToClipboard}
+                >
+                  <Copy className="w-4 h-4 mr-2" />
+                  {t.copyButton}
+                </Button>
+              ) : (
+                <Button
+                  className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white py-3 px-5 rounded-xl font-medium transition-all shadow-md hover:shadow-lg"
+                  onClick={closeTab}
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  {t.closeTabButton}
+                </Button>
+              )}
             </div>
           </Card>
         </motion.div>
