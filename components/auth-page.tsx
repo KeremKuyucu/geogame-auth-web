@@ -33,6 +33,8 @@ const translations = {
     guestNamePrompt: "Enter your name for the leaderboard (optional)",
     loginSuccess: "Successfully logged in!",
     loginError: "Login failed. Please try again.",
+    copyWarning: "User data copied to clipboard! You can now return to the application.",
+    copyError: "Data copy failed!",
   },
   tr: {
     loginTitle: "GeoGame'e Hoş Geldiniz",
@@ -55,6 +57,8 @@ const translations = {
     guestNamePrompt: "Sıralama için adınızı girin (isteğe bağlı)",
     loginSuccess: "Başarıyla giriş yapıldı!",
     loginError: "Giriş başarısız. Lütfen tekrar deneyin.",
+    copyWarning: "Kullanıcı verisi panoya kopyalandı! Ana uygulamaya dönebilirsiniz.",
+    copyError: "Veri kopyalanamadı!",
   },
 }
 
@@ -163,16 +167,14 @@ export default function AuthPage() {
       if (!userData) return;
       navigator.clipboard.writeText(JSON.stringify({ user: userData }, null, 2))
         .then(() => {
-          // Mesajı daha açıklayıcı hale getirin
-          toast.success("Kullanıcı verisi panoya kopyalandı! Ana uygulamaya dönebilirsiniz.");
+          toast.success(t.copyWarning);
         })
         .catch(err => {
           console.error("Copy failed:", err);
-          toast.error("Veri kopyalanamadı!");
+          toast.error(t.copyError);
         });
   };
 
-  // E-posta ve şifre formu bileşeni
   const EmailForm = () => {
       const [email, setEmail] = useState('')
       const [password, setPassword] = useState('')
