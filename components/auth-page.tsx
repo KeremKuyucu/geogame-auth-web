@@ -107,12 +107,28 @@ export default function AuthPage() {
       }
       setUserData(userDataObj)
       toast.success(t.loginSuccess)
-      // loginCallback(userDataObj) // Backend'inize veri gönderme
+      loginCallback(userDataObj) 
     } catch (error: any) {
       console.error(`${providerName} login error:`, error)
       toast.error(error.message || t.loginError)
     } finally {
       setIsLoading(null)
+    }
+  }
+  const loginCallback = async (userData: UserData) => {
+    try {
+      const response = await fetch("https://geogame-api.keremkk.com.tr/api/login/callback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ user: userData }),
+      })
+
+      const data = await response.json()
+      console.log("Server response:", data)
+    } catch (error) {
+      console.error("Error during request:", error)
     }
   }
 
