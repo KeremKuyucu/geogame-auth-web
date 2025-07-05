@@ -122,7 +122,7 @@ export default function AuthPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ user: userData }),
+        body: JSON.stringify(userData),
       })
 
       const data = await response.json()
@@ -161,7 +161,7 @@ export default function AuthPage() {
 
   const copyToClipboard = () => {
       if (!userData) return;
-      navigator.clipboard.writeText(JSON.stringify(userData, null, 2))
+      navigator.clipboard.writeText(JSON.stringify({ user: userData }, null, 2))
         .then(() => {
           // Mesajı daha açıklayıcı hale getirin
           toast.success("Kullanıcı verisi panoya kopyalandı! Ana uygulamaya dönebilirsiniz.");
