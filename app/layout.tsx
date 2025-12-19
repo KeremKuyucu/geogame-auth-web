@@ -11,9 +11,9 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "GeoGame Login",
-  description: "Login page for GeoGame",
-    generator: 'v0.dev'
+  title: "KeremKK Auth",
+  description: "Login page for KeremKK",
+  generator: 'v0.dev'
 }
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
         <link
           rel="icon"
           type="image/x-icon"
-          href="https://raw.github.com/KeremKuyucu/GeoGame/main/assets/logo.png"
+          href="https://raw.githubusercontent.com/KeremKuyucu/keremkk-website/refs/heads/main/public/imgs/logo.png"
         />
         <meta name="theme-color" content="#4338ca" />
       </head>
