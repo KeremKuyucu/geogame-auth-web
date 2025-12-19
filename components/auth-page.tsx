@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { motion, AnimatePresence } from "framer-motion"
-import { Copy, RefreshCw, Mail, KeyRound, ArrowLeft, Send, CheckCircle } from "lucide-react"
+import { Copy, RefreshCw, Mail, KeyRound, ArrowLeft, Send, CheckCircle, User, Lock, Image } from "lucide-react"
 import { Toaster, toast } from "react-hot-toast"
 
 // --- SUPABASE CONFIG ---
@@ -41,6 +41,16 @@ const translations = {
     updateSuccess: "Password updated successfully!",
     copyWarning: "User data copied!",
     checkEmail: "Check your email for the confirmation link!",
+    manageAccount: "Manage Account",
+    editProfile: "Edit Profile",
+    changePassword: "Change Password",
+    displayName: "Display Name",
+    profileUrl: "Profile Picture URL",
+    currentPassword: "Current Password",
+    saveChanges: "Save Changes",
+    profileUpdated: "Profile updated successfully!",
+    passwordChanged: "Password changed successfully!",
+    backToDashboard: "Back to Dashboard",
   },
   tr: {
     loginTitle: "KeremKK Auth",
@@ -67,6 +77,16 @@ const translations = {
     updateSuccess: "Şifre başarıyla güncellendi!",
     copyWarning: "Veriler kopyalandı!",
     checkEmail: "Onay linki için e-postanızı kontrol edin!",
+    manageAccount: "Hesabı Yönet",
+    editProfile: "Profili Düzenle",
+    changePassword: "Şifre Değiştir",
+    displayName: "Görünen İsim",
+    profileUrl: "Profil Resmi URL",
+    currentPassword: "Mevcut Şifre",
+    saveChanges: "Değişiklikleri Kaydet",
+    profileUpdated: "Profil başarıyla güncellendi!",
+    passwordChanged: "Şifre başarıyla değiştirildi!",
+    backToDashboard: "Panele Dön",
   },
 }
 
@@ -79,7 +99,7 @@ type UserData = {
   refreshToken?: string | null
 }
 
-type ViewState = 'login' | 'reset_request' | 'update_password';
+type ViewState = 'login' | 'reset_request' | 'update_password' | 'dashboard' | 'edit_profile' | 'change_password';
 
 export default function AuthPage() {
   const [userData, setUserData] = useState<UserData | null>(null)
@@ -88,6 +108,9 @@ export default function AuthPage() {
   const [view, setView] = useState<ViewState>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [profileUrl, setProfileUrl] = useState('')
 
   const t = translations[language as keyof typeof translations]
 
@@ -116,6 +139,8 @@ export default function AuthPage() {
       refreshToken: refreshToken
     }
     setUserData(userDataObj)
+    setDisplayName(userDataObj.displayName || '')
+    setProfileUrl(userDataObj.profilePicture || '')
     loginCallback(userDataObj)
   }, [loginCallback])
 
@@ -126,8 +151,9 @@ export default function AuthPage() {
     // ✅ Sayfa yüklendiğinde mevcut oturumu kontrol et
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user && view === 'login') {
+      if (session?.user) {
         processUser(session.user, session.access_token, session.refresh_token)
+        if (view === 'login') setView('dashboard')
       }
     }
     checkSession()
@@ -140,6 +166,7 @@ export default function AuthPage() {
       } else if (event === "SIGNED_IN" && session?.user) {
         if (view !== 'update_password') {
           processUser(session.user, session.access_token, session.refresh_token)
+          setView('dashboard')
         }
       } else if (event === "SIGNED_OUT") {
         setUserData(null)
@@ -210,8 +237,8 @@ export default function AuthPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
         processUser(session.user, session.access_token, session.refresh_token)
+        setView('dashboard')
       }
-      // ✅ View'ı resetlemeye gerek yok, userData dolunca otomatik dashboard gösterilecek
     } catch (error: any) {
       toast.error(error.message)
     } finally {
@@ -224,6 +251,9 @@ export default function AuthPage() {
     setUserData(null)
     setEmail('')
     setPassword('')
+    setNewPassword('')
+    setDisplayName('')
+    setProfileUrl('')
     setView('login')
   }
 
@@ -231,6 +261,54 @@ export default function AuthPage() {
     if (!userData) return
     navigator.clipboard.writeText(JSON.stringify({ user: userData }, null, 2))
       .then(() => toast.success(t.copyWarning))
+  }
+
+  const updateProfile = async () => {
+    setIsLoading("update_profile")
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          full_name: displayName,
+          avatar_url: profileUrl
+        }
+      })
+      if (error) throw error
+
+      // Kullanıcı verisini güncelle
+      if (userData) {
+        setUserData({
+          ...userData,
+          displayName: displayName,
+          profilePicture: profileUrl || userData.profilePicture
+        })
+      }
+
+      toast.success(t.profileUpdated)
+      setView('dashboard')
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsLoading(null)
+    }
+  }
+
+  const changePassword = async () => {
+    if (!newPassword) return
+    setIsLoading("change_password")
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      })
+      if (error) throw error
+
+      toast.success(t.passwordChanged)
+      setNewPassword('')
+      setView('dashboard')
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsLoading(null)
+    }
   }
 
   // --- RENDER ---
@@ -348,18 +426,106 @@ export default function AuthPage() {
         </motion.div>
       ) : (
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
-          <Card className="bg-white/10 backdrop-blur-md rounded-2xl shadow-xl p-8 w-full border-none text-center">
-            <img src={userData.profilePicture!} alt="Profile" className="w-24 h-24 rounded-full mx-auto border-4 border-white/30 object-cover shadow-lg" />
-            <h2 className="text-2xl font-bold mt-4">{`${t.welcome}, ${userData.displayName}!`}</h2>
-            <p className="text-white/60 mb-6">{userData.email}</p>
-            <div className="flex gap-4">
-              <Button className="flex-1 bg-white/10 hover:bg-white/20" onClick={handleSignOut}>
-                <RefreshCw className="w-4 h-4 mr-2" />{t.cancelButton}
-              </Button>
-              <Button className="flex-1 bg-blue-500 hover:bg-blue-600" onClick={copyToClipboard}>
-                <Copy className="w-4 h-4 mr-2" />{t.copyButton}
-              </Button>
-            </div>
+          <Card className="bg-white/10 backdrop-blur-md rounded-2xl shadow-xl p-8 w-full border-none">
+            <AnimatePresence mode="wait">
+
+              {view === 'dashboard' && (
+                <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
+                  <img src={userData.profilePicture!} alt="Profile" className="w-24 h-24 rounded-full mx-auto border-4 border-white/30 object-cover shadow-lg" />
+                  <h2 className="text-2xl font-bold mt-4">{`${t.welcome}, ${userData.displayName}!`}</h2>
+                  <p className="text-white/60 mb-6">{userData.email}</p>
+                  <div className="space-y-3">
+                    <Button className="w-full bg-white/10 hover:bg-white/20" onClick={() => setView('edit_profile')}>
+                      <User className="w-4 h-4 mr-2" />{t.editProfile}
+                    </Button>
+                    <Button className="w-full bg-white/10 hover:bg-white/20" onClick={() => setView('change_password')}>
+                      <Lock className="w-4 h-4 mr-2" />{t.changePassword}
+                    </Button>
+                    <div className="flex gap-3 pt-2">
+                      <Button className="flex-1 bg-white/10 hover:bg-white/20" onClick={handleSignOut}>
+                        <RefreshCw className="w-4 h-4 mr-2" />{t.cancelButton}
+                      </Button>
+                      <Button className="flex-1 bg-blue-500 hover:bg-blue-600" onClick={copyToClipboard}>
+                        <Copy className="w-4 h-4 mr-2" />{t.copyButton}
+                      </Button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {view === 'edit_profile' && (
+                <motion.div key="edit_profile" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 50, opacity: 0 }}>
+                  <Button onClick={() => setView('dashboard')} variant="ghost" className="mb-4 text-white/70 hover:text-white pl-0">
+                    <ArrowLeft size={16} className="mr-2" /> {t.backToDashboard}
+                  </Button>
+                  <div className="mb-6 text-center">
+                    <h2 className="text-2xl font-bold">{t.editProfile}</h2>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20} />
+                      <Input
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        type="text"
+                        placeholder={t.displayName}
+                        className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl"
+                      />
+                    </div>
+                    <div className="relative">
+                      <Image className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20} />
+                      <Input
+                        value={profileUrl}
+                        onChange={(e) => setProfileUrl(e.target.value)}
+                        type="url"
+                        placeholder={t.profileUrl}
+                        className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl"
+                      />
+                    </div>
+                    {profileUrl && (
+                      <div className="flex justify-center">
+                        <img src={profileUrl} alt="Preview" className="w-20 h-20 rounded-full border-2 border-white/30 object-cover" onError={(e) => {
+                          e.currentTarget.src = `https://api.dicebear.com/8.x/initials/svg?seed=${userData?.uid}`
+                        }} />
+                      </div>
+                    )}
+                    <Button onClick={updateProfile} disabled={!!isLoading || !displayName} className="w-full h-12 bg-green-600 hover:bg-green-700 rounded-xl font-medium">
+                      {isLoading === 'update_profile' ? <RefreshCw className="animate-spin mr-2" /> : <CheckCircle size={18} className="mr-2" />}
+                      {t.saveChanges}
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
+
+              {view === 'change_password' && (
+                <motion.div key="change_password" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 50, opacity: 0 }}>
+                  <Button onClick={() => setView('dashboard')} variant="ghost" className="mb-4 text-white/70 hover:text-white pl-0">
+                    <ArrowLeft size={16} className="mr-2" /> {t.backToDashboard}
+                  </Button>
+                  <div className="mb-6 text-center">
+                    <h2 className="text-2xl font-bold">{t.changePassword}</h2>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20} />
+                      <Input
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        type="password"
+                        placeholder={t.newPasswordPlaceholder}
+                        className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl"
+                        onKeyDown={(e) => e.key === 'Enter' && changePassword()}
+                      />
+                    </div>
+                    <Button onClick={changePassword} disabled={!!isLoading || !newPassword} className="w-full h-12 bg-orange-500 hover:bg-orange-600 rounded-xl font-medium">
+                      {isLoading === 'change_password' ? <RefreshCw className="animate-spin mr-2" /> : <Lock size={18} className="mr-2" />}
+                      {t.saveChanges}
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
+
+            </AnimatePresence>
           </Card>
         </motion.div>
       )}
