@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { createClient } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -79,53 +79,33 @@ type UserData = {
   refreshToken?: string | null
 }
 
-// Görünüm Durumları: Giriş | Şifre İsteği | Yeni Şifre Girme
 type ViewState = 'login' | 'reset_request' | 'update_password';
 
 export default function AuthPage() {
-  // State Yönetimi
   const [userData, setUserData] = useState<UserData | null>(null)
   const [language, setLanguage] = useState("en")
   const [isLoading, setIsLoading] = useState<string | null>(null)
   const [view, setView] = useState<ViewState>('login')
-
-  // Form Verileri
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
-  useEffect(() => {
-    // Dil ayarı
-    setLanguage(navigator.language.startsWith("tr") ? "tr" : "en")
-
-    // Supabase Auth State Dinleyici
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-
-      // 1. Şifre Sıfırlama Linkine Tıklanıp Gelindiyse
-      if (event === "PASSWORD_RECOVERY") {
-        setView('update_password');
-        toast.success("Lütfen yeni şifrenizi belirleyin.");
-      }
-      // 2. Normal Giriş Yapıldıysa
-      else if (event === "SIGNED_IN" && session?.user) {
-        // Eğer şifre yenileme ekranındaysak, kullanıcıyı hemen dashboard'a atma, şifresini değiştirsin.
-        if (view !== 'update_password') {
-          processUser(session.user, session.access_token, session.refresh_token);
-        }
-      }
-      // 3. Çıkış Yapıldıysa
-      else if (event === "SIGNED_OUT") {
-        setUserData(null);
-        setView('login');
-      }
-    });
-
-    return () => subscription.unsubscribe()
-  }, [view])
-
   const t = translations[language as keyof typeof translations]
 
-  // Kullanıcı Verisini İşle
-  const processUser = (user: any, accessToken?: string, refreshToken?: string) => {
+  // API Callback - useCallback ile sarmalayalım
+  const loginCallback = useCallback(async (userData: UserData) => {
+    try {
+      await fetch("https://geogame-api.keremkk.com.tr/api/login/callback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(userData),
+      })
+    } catch (error) {
+      console.error("Callback error:", error)
+    }
+  }, [])
+
+  // Kullanıcı Verisini İşle - useCallback ile sarmalayalım
+  const processUser = useCallback((user: any, accessToken?: string, refreshToken?: string) => {
     const metadata = user.user_metadata || {}
     const userDataObj: UserData = {
       uid: user.id,
@@ -137,26 +117,42 @@ export default function AuthPage() {
     }
     setUserData(userDataObj)
     loginCallback(userDataObj)
-  }
+  }, [loginCallback])
 
-  // API Callback
-  const loginCallback = async (userData: UserData) => {
-    try {
-      await fetch("https://geogame-api.keremkk.com.tr/api/login/callback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(userData),
-      })
-    } catch (error) {
-      console.error("Callback error:", error)
+  useEffect(() => {
+    // Dil ayarı
+    setLanguage(navigator.language.startsWith("tr") ? "tr" : "en")
+
+    // ✅ Sayfa yüklendiğinde mevcut oturumu kontrol et
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user && view === 'login') {
+        processUser(session.user, session.access_token, session.refresh_token)
+      }
     }
-  }
+    checkSession()
+
+    // Supabase Auth State Dinleyici
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setView('update_password')
+        toast.success(t.updatePasswordDesc)
+      } else if (event === "SIGNED_IN" && session?.user) {
+        if (view !== 'update_password') {
+          processUser(session.user, session.access_token, session.refresh_token)
+        }
+      } else if (event === "SIGNED_OUT") {
+        setUserData(null)
+        setView('login')
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [view, processUser, t.updatePasswordDesc])
 
   // --- İŞLEMLER ---
-
-  // 1. Giriş
   const emailSignIn = async () => {
-    if (!email || !password) return;
+    if (!email || !password) return
     setIsLoading("signin")
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -169,9 +165,8 @@ export default function AuthPage() {
     }
   }
 
-  // 2. Kayıt
   const emailSignUp = async () => {
-    if (!email || !password) return;
+    if (!email || !password) return
     setIsLoading("signup")
     try {
       const { data, error } = await supabase.auth.signUp({ email, password })
@@ -185,13 +180,10 @@ export default function AuthPage() {
     }
   }
 
-  // 3. Şifre Sıfırlama E-postası Gönder
   const sendResetEmail = async () => {
-    if (!email) return;
+    if (!email) return
     setIsLoading("reset")
     try {
-      // DÜZELTME: Artık mobil deep link değil, direkt site URL'i veriyoruz.
-      // window.location.origin = https://senin-siten.vercel.app
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
       })
@@ -205,21 +197,21 @@ export default function AuthPage() {
     }
   }
 
-  // 4. Yeni Şifreyi Kaydet (Update)
   const updateUserPassword = async () => {
-    if (!password) return;
+    if (!password) return
     setIsLoading("update_pass")
     try {
       const { error } = await supabase.auth.updateUser({ password: password })
       if (error) throw error
 
       toast.success(t.updateSuccess)
-      // Şifre güncellendi, kullanıcı zaten giriş yapmış durumda, verileri gösterelim
+
+      // ✅ Şifre güncellendi, kullanıcı verilerini al
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
         processUser(session.user, session.access_token, session.refresh_token)
       }
-      setView('login') // Görünüm state'ini resetle (zaten userData dolunca dashboard gözükecek)
+      // ✅ View'ı resetlemeye gerek yok, userData dolunca otomatik dashboard gösterilecek
     } catch (error: any) {
       toast.error(error.message)
     } finally {
@@ -228,18 +220,18 @@ export default function AuthPage() {
   }
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setUserData(null);
-    setEmail('');
-    setPassword('');
-    setView('login');
-  };
+    await supabase.auth.signOut()
+    setUserData(null)
+    setEmail('')
+    setPassword('')
+    setView('login')
+  }
 
   const copyToClipboard = () => {
-    if (!userData) return;
+    if (!userData) return
     navigator.clipboard.writeText(JSON.stringify({ user: userData }, null, 2))
-      .then(() => toast.success(t.copyWarning));
-  };
+      .then(() => toast.success(t.copyWarning))
+  }
 
   // --- RENDER ---
   return (
@@ -251,7 +243,6 @@ export default function AuthPage() {
           <Card className="bg-black/20 backdrop-blur-lg rounded-2xl shadow-xl p-8 w-full border-none">
             <AnimatePresence mode="wait">
 
-              {/* --- 1. GİRİŞ EKRANI --- */}
               {view === 'login' && (
                 <motion.div key="login" initial={{ x: -50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -50, opacity: 0 }}>
                   <div className="mb-8 text-center">
@@ -277,6 +268,7 @@ export default function AuthPage() {
                         type="password"
                         placeholder={t.passwordPlaceholder}
                         className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl"
+                        onKeyDown={(e) => e.key === 'Enter' && emailSignIn()}
                       />
                     </div>
                     <div className="flex justify-end">
@@ -296,7 +288,6 @@ export default function AuthPage() {
                 </motion.div>
               )}
 
-              {/* --- 2. ŞİFRE SIFIRLAMA İSTEĞİ (MAIL GÖNDERME) --- */}
               {view === 'reset_request' && (
                 <motion.div key="reset_request" initial={{ x: 50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 50, opacity: 0 }}>
                   <Button onClick={() => setView('login')} variant="ghost" className="mb-4 text-white/70 hover:text-white pl-0">
@@ -315,6 +306,7 @@ export default function AuthPage() {
                         type="email"
                         placeholder={t.emailPlaceholder}
                         className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl"
+                        onKeyDown={(e) => e.key === 'Enter' && sendResetEmail()}
                       />
                     </div>
                     <Button onClick={sendResetEmail} disabled={!!isLoading || !email} className="w-full h-12 bg-orange-500 hover:bg-orange-600 rounded-xl font-medium">
@@ -325,7 +317,6 @@ export default function AuthPage() {
                 </motion.div>
               )}
 
-              {/* --- 3. YENİ ŞİFRE BELİRLEME (WEB SİTESİNDE) --- */}
               {view === 'update_password' && (
                 <motion.div key="update_password" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
                   <div className="mb-6 text-center">
@@ -341,6 +332,7 @@ export default function AuthPage() {
                         type="password"
                         placeholder={t.newPasswordPlaceholder}
                         className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl"
+                        onKeyDown={(e) => e.key === 'Enter' && updateUserPassword()}
                       />
                     </div>
                     <Button onClick={updateUserPassword} disabled={!!isLoading || !password} className="w-full h-12 bg-green-600 hover:bg-green-700 rounded-xl font-medium">
@@ -355,7 +347,6 @@ export default function AuthPage() {
           </Card>
         </motion.div>
       ) : (
-        /* --- DASHBOARD (GİRİŞ YAPILDI) --- */
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
           <Card className="bg-white/10 backdrop-blur-md rounded-2xl shadow-xl p-8 w-full border-none text-center">
             <img src={userData.profilePicture!} alt="Profile" className="w-24 h-24 rounded-full mx-auto border-4 border-white/30 object-cover shadow-lg" />
