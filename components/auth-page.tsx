@@ -41,7 +41,6 @@ const translations = {
     updateSuccess: "Password updated successfully!",
     copyWarning: "User data copied!",
     checkEmail: "Check your email for the confirmation link!",
-    manageAccount: "Manage Account",
     editProfile: "Edit Profile",
     changePassword: "Change Password",
     displayName: "Display Name",
@@ -77,7 +76,6 @@ const translations = {
     updateSuccess: "Şifre başarıyla güncellendi!",
     copyWarning: "Veriler kopyalandı!",
     checkEmail: "Onay linki için e-postanızı kontrol edin!",
-    manageAccount: "Hesabı Yönet",
     editProfile: "Profili Düzenle",
     changePassword: "Şifre Değiştir",
     displayName: "Görünen İsim",
@@ -111,6 +109,7 @@ export default function AuthPage() {
   const [newPassword, setNewPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [profileUrl, setProfileUrl] = useState('')
+  const [showWelcome, setShowWelcome] = useState(true)
 
   const t = translations[language as keyof typeof translations]
 
@@ -148,6 +147,15 @@ export default function AuthPage() {
     // Dil ayarı
     setLanguage(navigator.language.startsWith("tr") ? "tr" : "en")
 
+    // Hoş geldiniz mesajını göster
+    if (showWelcome) {
+      const message = navigator.language.startsWith("tr")
+        ? "Artık oturum açabilirsiniz!"
+        : "You can now sign in!";
+      toast.success(message, { duration: 4000 });
+      setShowWelcome(false);
+    }
+
     // ✅ Sayfa yüklendiğinde mevcut oturumu kontrol et
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -175,7 +183,7 @@ export default function AuthPage() {
     })
 
     return () => subscription.unsubscribe()
-  }, [view, processUser, t.updatePasswordDesc])
+  }, [view, processUser, t.updatePasswordDesc, showWelcome])
 
   // --- İŞLEMLER ---
   const emailSignIn = async () => {
@@ -255,12 +263,6 @@ export default function AuthPage() {
     setDisplayName('')
     setProfileUrl('')
     setView('login')
-  }
-
-  const copyToClipboard = () => {
-    if (!userData) return
-    navigator.clipboard.writeText(JSON.stringify({ user: userData }, null, 2))
-      .then(() => toast.success(t.copyWarning))
   }
 
   const updateProfile = async () => {
@@ -441,12 +443,9 @@ export default function AuthPage() {
                     <Button className="w-full bg-white/10 hover:bg-white/20" onClick={() => setView('change_password')}>
                       <Lock className="w-4 h-4 mr-2" />{t.changePassword}
                     </Button>
-                    <div className="flex gap-3 pt-2">
-                      <Button className="flex-1 bg-white/10 hover:bg-white/20" onClick={handleSignOut}>
+                    <div className="pt-2">
+                      <Button className="w-full bg-red-500 hover:bg-red-600" onClick={handleSignOut}>
                         <RefreshCw className="w-4 h-4 mr-2" />{t.cancelButton}
-                      </Button>
-                      <Button className="flex-1 bg-blue-500 hover:bg-blue-600" onClick={copyToClipboard}>
-                        <Copy className="w-4 h-4 mr-2" />{t.copyButton}
                       </Button>
                     </div>
                   </div>
