@@ -1,16 +1,21 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { getAuth, GoogleAuthProvider, GithubAuthProvider, signInWithPopup, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth"
-import { auth } from "@/firebase/config" // Firebase config'i buradan alıyoruz
+import { createClient } from "@supabase/supabase-js" // Supabase import
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input" // Input bileşenini ekliyoruz
+import { Input } from "@/components/ui/input"
 import { motion, AnimatePresence } from "framer-motion"
-import { User, Copy, RefreshCw, X, LogIn, Mail, KeyRound, Github, ArrowLeft } from "lucide-react"
-import { Toaster, toast } from "react-hot-toast" // Toast bildirimleri için
+import { User, Copy, RefreshCw, LogIn, Mail, KeyRound, Github, ArrowLeft } from "lucide-react"
+import { Toaster, toast } from "react-hot-toast"
 
-// Çevirileri güncelledim
+// --- SUPABASE CONFIG ---
+// Gerçek projede bunları .env dosyasından çekmelisin
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "YOUR_SUPABASE_URL"
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "YOUR_SUPABASE_ANON_KEY"
+const supabase = createClient(supabaseUrl, supabaseKey)
+
+// --- ÇEVİRİLER (Aynen Korundu) ---
 const translations = {
   en: {
     loginTitle: "Welcome to GeoGame",
@@ -35,6 +40,7 @@ const translations = {
     loginError: "Login failed. Please try again.",
     copyWarning: "User data copied to clipboard! You can now return to the application.",
     copyError: "Data copy failed!",
+    checkEmail: "Check your email for the confirmation link!",
   },
   tr: {
     loginTitle: "GeoGame'e Hoş Geldiniz",
@@ -59,6 +65,7 @@ const translations = {
     loginError: "Giriş başarısız. Lütfen tekrar deneyin.",
     copyWarning: "Kullanıcı verisi panoya kopyalandı! Ana uygulamaya dönebilirsiniz.",
     copyError: "Veri kopyalanamadı!",
+    checkEmail: "Onay linki için e-postanızı kontrol edin!",
   },
 }
 
@@ -67,9 +74,10 @@ type UserData = {
   displayName: string | null
   email: string | null
   profilePicture: string | null
+  accessToken?: string | null // Supabase session token'ı için ekledik
+  refreshToken?: string | null
 }
 
-// Yeniden kullanılabilir giriş butonu bileşeni
 const ProviderButton = ({ provider, icon, text, onClick, isLoading }: any) => (
   <Button
     disabled={isLoading}
@@ -88,47 +96,60 @@ const ProviderButton = ({ provider, icon, text, onClick, isLoading }: any) => (
 export default function AuthPage() {
   const [userData, setUserData] = useState<UserData | null>(null)
   const [language, setLanguage] = useState("en")
-  const [isLoading, setIsLoading] = useState<string | null>(null) // Hangi butonun yüklendiğini takip eder
-  const [view, setView] = useState("main") // 'main', 'email', 'guest'
+  const [isLoading, setIsLoading] = useState<string | null>(null)
+  const [view, setView] = useState("main")
 
   useEffect(() => {
     setLanguage(navigator.language.startsWith("tr") ? "tr" : "en")
+
+    // Supabase Auth Listener: Sayfa yenilendiğinde veya OAuth redirect sonrası çalışır
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        processUser(session.user, session.access_token, session.refresh_token)
+      }
+    }
+
+    checkUser()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user && !userData) {
+        processUser(session.user, session.access_token, session.refresh_token)
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   const t = translations[language as keyof typeof translations]
 
-  const handleLogin = async (loginFunction: Function, providerName: string) => {
-    setIsLoading(providerName)
-    try {
-      const user = await loginFunction()
-      if (!user) throw new Error("User object is null.")
+  // Supabase User objesini bizim UserData formatımıza çeviren fonksiyon
+  const processUser = (user: any, accessToken?: string, refreshToken?: string) => {
+    // Supabase'de google/github verileri user_metadata içindedir
+    const metadata = user.user_metadata || {}
 
-      const userDataObj: UserData = {
-        uid: user.uid,
-        displayName: user.displayName || "User",
-        email: user.email,
-        profilePicture: user.photoURL || `https://api.dicebear.com/8.x/initials/svg?seed=${user.displayName || user.email || 'guest'}`,
-      }
-      setUserData(userDataObj)
-      toast.success(t.loginSuccess)
-      loginCallback(userDataObj) 
-    } catch (error: any) {
-      console.error(`${providerName} login error:`, error)
-      toast.error(error.message || t.loginError)
-    } finally {
-      setIsLoading(null)
+    const userDataObj: UserData = {
+      uid: user.id,
+      displayName: metadata.full_name || metadata.name || user.email?.split('@')[0] || "User",
+      email: user.email || null,
+      profilePicture: metadata.avatar_url || metadata.picture || `https://api.dicebear.com/8.x/initials/svg?seed=${user.id}`,
+      accessToken: accessToken,
+      refreshToken: refreshToken
     }
+
+    setUserData(userDataObj)
+    // Sadece ilk yüklemede toast göstermemek için kontrol eklenebilir ama şimdilik bırakıyoruz
+    toast.success(t.loginSuccess)
+    loginCallback(userDataObj)
   }
+
   const loginCallback = async (userData: UserData) => {
     try {
       const response = await fetch("https://geogame-api.keremkk.com.tr/api/login/callback", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(userData),
       })
-
       const data = await response.json()
       console.log("Server response:", data)
     } catch (error) {
@@ -136,136 +157,193 @@ export default function AuthPage() {
     }
   }
 
-  const googleSignIn = () => handleLogin(async () => {
-    const provider = new GoogleAuthProvider()
-    const result = await signInWithPopup(auth, provider)
-    return result.user
-  }, "google")
+  // --- OAUTH LOGIN (Google / GitHub) ---
+  const handleOAuthLogin = async (provider: 'google' | 'github') => {
+    setIsLoading(provider)
+    try {
+      // Web uygulamasında redirect kullanıyoruz.
+      // redirectTo: window.location.href -> İşlem bitince bu sayfaya geri dön.
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: provider,
+        options: {
+          redirectTo: typeof window !== 'undefined' ? window.location.href : undefined,
+        },
+      })
+      if (error) throw error
+    } catch (error: any) {
+      console.error(`${provider} login error:`, error)
+      toast.error(error.message || t.loginError)
+      setIsLoading(null) // Hata olursa loading'i kapat, başarılı olursa sayfa yönleneceği için gerek yok
+    }
+  }
 
-  const githubSignIn = () => handleLogin(async () => {
-    const provider = new GithubAuthProvider()
-    const result = await signInWithPopup(auth, provider)
-    return result.user
-  }, "github")
-  
-  const guestSignIn = (name: string) => handleLogin(async () => {
-      const result = await signInAnonymously(auth)
-      return {...result.user, displayName: name || 'Guest'}
-  }, "guest")
+  // --- GUEST LOGIN ---
+  const guestSignIn = async (name: string) => {
+    setIsLoading("guest")
+    try {
+      // Supabase'de anonymous sign-in aktifleştirilmelidir!
+      const { data, error } = await supabase.auth.signInAnonymously({
+        options: {
+          data: { full_name: name || 'Guest' } // Metadata olarak ismi ekliyoruz
+        }
+      })
+      if (error) throw error
+      // onAuthStateChange tetikleneceği için burada manuel setUserData çağırmaya gerek yok
+    } catch (error: any) {
+      console.error("Guest login error:", error)
+      toast.error(error.message || t.loginError)
+      setIsLoading(null)
+    }
+  }
 
-  const emailSignIn = (email: string, pass: string) => handleLogin(async () => {
-      const result = await signInWithEmailAndPassword(auth, email, pass)
-      return result.user
-  }, "email_signin")
-  
-  const emailSignUp = (email: string, pass: string) => handleLogin(async () => {
-      const result = await createUserWithEmailAndPassword(auth, email, pass)
-      return result.user
-  }, "email_signup")
+  // --- EMAIL LOGIN ---
+  const emailSignIn = async (email: string, pass: string) => {
+    setIsLoading("email_signin")
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password: pass,
+      })
+      if (error) throw error
+    } catch (error: any) {
+      console.error("Email signin error:", error)
+      toast.error(error.message || t.loginError)
+      setIsLoading(null)
+    }
+  }
+
+  // --- EMAIL SIGN UP ---
+  const emailSignUp = async (email: string, pass: string) => {
+    setIsLoading("email_signup")
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password: pass,
+        // E-posta doğrulama kapalıysa direkt giriş yapar, açıksa mail gider.
+      })
+      if (error) throw error
+
+      if (data.user && !data.session) {
+        toast.success(t.checkEmail) // Email onayı gerekiyorsa
+        setIsLoading(null)
+      }
+    } catch (error: any) {
+      console.error("Email signup error:", error)
+      toast.error(error.message || t.loginError)
+      setIsLoading(null)
+    }
+  }
 
   const copyToClipboard = () => {
-      if (!userData) return;
-      navigator.clipboard.writeText(JSON.stringify({ user: userData }, null, 2))
-        .then(() => {
-          toast.success(t.copyWarning);
-        })
-        .catch(err => {
-          console.error("Copy failed:", err);
-          toast.error(t.copyError);
-        });
+    if (!userData) return;
+    // Deep Link senaryosu için JSON yerine direkt bir URL şeması da kopyalatabilirsin
+    // Örn: com.keremkk.app://login?token=...
+    navigator.clipboard.writeText(JSON.stringify({ user: userData }, null, 2))
+      .then(() => toast.success(t.copyWarning))
+      .catch(err => {
+        console.error("Copy failed:", err);
+        toast.error(t.copyError);
+      });
   };
 
+  // ... (EmailForm ve GuestForm bileşenleri aynı kaldı, sadece fonksiyon çağrıları yukarıdaki yeni fonksiyonları kullanıyor)
   const EmailForm = () => {
-      const [email, setEmail] = useState('')
-      const [password, setPassword] = useState('')
-      return(
-          <motion.div initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -300, opacity: 0 }} className="space-y-4">
-               <Button onClick={() => setView('main')} variant="ghost" className="text-white/70 hover:text-white"><ArrowLeft size={16} className="mr-2" /> {t.backButton}</Button>
-               <div className="relative">
-                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20}/>
-                   <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder={t.emailPlaceholder} className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl"/>
-               </div>
-               <div className="relative">
-                   <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20}/>
-                   <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder={t.passwordPlaceholder} className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl"/>
-               </div>
-               <div className="flex gap-4">
-                   <Button onClick={() => emailSignIn(email, password)} disabled={!!isLoading} className="w-full h-12 bg-indigo-500 hover:bg-indigo-600">{isLoading === 'email_signin' ? <RefreshCw className="animate-spin"/> : t.signIn}</Button>
-                   <Button onClick={() => emailSignUp(email, password)} disabled={!!isLoading} className="w-full h-12 bg-green-500 hover:bg-green-600">{isLoading === 'email_signup' ? <RefreshCw className="animate-spin"/> : t.signUp}</Button>
-               </div>
-          </motion.div>
-      )
+    const [email, setEmail] = useState('')
+    const [password, setPassword] = useState('')
+    return (
+      <motion.div initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -300, opacity: 0 }} className="space-y-4">
+        <Button onClick={() => setView('main')} variant="ghost" className="text-white/70 hover:text-white"><ArrowLeft size={16} className="mr-2" /> {t.backButton}</Button>
+        <div className="relative">
+          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20} />
+          <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder={t.emailPlaceholder} className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl" />
+        </div>
+        <div className="relative">
+          <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20} />
+          <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder={t.passwordPlaceholder} className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl" />
+        </div>
+        <div className="flex gap-4">
+          <Button onClick={() => emailSignIn(email, password)} disabled={!!isLoading} className="w-full h-12 bg-indigo-500 hover:bg-indigo-600">{isLoading === 'email_signin' ? <RefreshCw className="animate-spin" /> : t.signIn}</Button>
+          <Button onClick={() => emailSignUp(email, password)} disabled={!!isLoading} className="w-full h-12 bg-green-500 hover:bg-green-600">{isLoading === 'email_signup' ? <RefreshCw className="animate-spin" /> : t.signUp}</Button>
+        </div>
+      </motion.div>
+    )
   }
-  
-  // Misafir giriş formu bileşeni
+
   const GuestForm = () => {
-      const [name, setName] = useState('')
-      return(
-          <motion.div initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -300, opacity: 0 }} className="space-y-4">
-               <Button onClick={() => setView('main')} variant="ghost" className="text-white/70 hover:text-white"><ArrowLeft size={16} className="mr-2" /> {t.backButton}</Button>
-               <p className="text-center text-white/80">{t.guestNamePrompt}</p>
-               <div className="relative">
-                   <User className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20}/>
-                   <Input value={name} onChange={(e) => setName(e.target.value)} type="text" placeholder="e.g. 'ProGamer'" className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl"/>
-               </div>
-               <Button onClick={() => guestSignIn(name)} disabled={!!isLoading} className="w-full h-12 bg-gray-500 hover:bg-gray-600">
-                    {isLoading === 'guest' ? <RefreshCw className="animate-spin"/> : <LogIn size={18} className="mr-2"/>}
-                    {t.guestLogin}
-                </Button>
-          </motion.div>
-      )
+    const [name, setName] = useState('')
+    return (
+      <motion.div initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -300, opacity: 0 }} className="space-y-4">
+        <Button onClick={() => setView('main')} variant="ghost" className="text-white/70 hover:text-white"><ArrowLeft size={16} className="mr-2" /> {t.backButton}</Button>
+        <p className="text-center text-white/80">{t.guestNamePrompt}</p>
+        <div className="relative">
+          <User className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20} />
+          <Input value={name} onChange={(e) => setName(e.target.value)} type="text" placeholder="e.g. 'ProGamer'" className="bg-white/10 border-white/20 pl-10 text-white placeholder:text-white/50 h-14 rounded-xl" />
+        </div>
+        <Button onClick={() => guestSignIn(name)} disabled={!!isLoading} className="w-full h-12 bg-gray-500 hover:bg-gray-600">
+          {isLoading === 'guest' ? <RefreshCw className="animate-spin" /> : <LogIn size={18} className="mr-2" />}
+          {t.guestLogin}
+        </Button>
+      </motion.div>
+    )
   }
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUserData(null);
+    // Sayfa yenilemek yerine state'i temizlemek daha yumuşak bir geçiş sağlar
+    window.location.reload();
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 text-white p-4 overflow-hidden">
       <Toaster position="top-center" toastOptions={{
-          className: 'bg-gray-800 text-white border border-white/20',
-          success: { duration: 3000 },
-          error: { duration: 5000 },
-      }}/>
-      
+        className: 'bg-gray-800 text-white border border-white/20',
+        success: { duration: 3000 },
+        error: { duration: 5000 },
+      }} />
+
       {!userData ? (
         <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="w-full max-w-sm"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="w-full max-w-sm"
         >
           <Card className="bg-black/20 backdrop-blur-lg rounded-2xl shadow-xl p-8 w-full border-none">
             <div className="mb-8 text-center">
               <h1 className="text-3xl font-bold">{t.loginTitle}</h1>
               <p className="text-white/70">{t.loginSubtitle}</p>
             </div>
-            
+
             <AnimatePresence mode="wait">
-                {view === 'main' && (
-                     <motion.div key="main" initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -300, opacity: 0 }} className="space-y-4">
-                        <ProviderButton provider="google" icon={<img src="https://cdn.glitch.global/e74d89f5-045d-4ad2-94c7-e2c99ed95318/google?v=1739613007196" alt="Google" className="w-6 h-6"/>} text={t.googleLogin} onClick={googleSignIn} isLoading={isLoading === 'google'}/>
-                        <ProviderButton provider="github" icon={<Github className="w-6 h-6"/>} text={t.githubLogin} onClick={githubSignIn} isLoading={isLoading === 'github'}/>
-                        <div className="relative flex items-center justify-center my-2">
-                           <div className="w-full border-t border-white/20"></div>
-                           <div className="relative px-2 text-sm text-white/50 bg-black/20">{t.orSeparator}</div>
-                        </div>
-                        <ProviderButton provider="email" icon={<Mail className="w-6 h-6"/>} text={t.emailLogin} onClick={() => setView('email')} isLoading={false}/>
-                        <ProviderButton provider="guest" icon={<User className="w-6 h-6"/>} text={t.guestLogin} onClick={() => setView('guest')} isLoading={false}/>
-                     </motion.div>
-                )}
-                {view === 'email' && <EmailForm key="email"/>}
-                {view === 'guest' && <GuestForm key="guest"/>}
+              {view === 'main' && (
+                <motion.div key="main" initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -300, opacity: 0 }} className="space-y-4">
+                  <ProviderButton provider="google" icon={<img src="https://cdn.glitch.global/e74d89f5-045d-4ad2-94c7-e2c99ed95318/google?v=1739613007196" alt="Google" className="w-6 h-6" />} text={t.googleLogin} onClick={() => handleOAuthLogin('google')} isLoading={isLoading === 'google'} />
+                  <ProviderButton provider="github" icon={<Github className="w-6 h-6" />} text={t.githubLogin} onClick={() => handleOAuthLogin('github')} isLoading={isLoading === 'github'} />
+                  <div className="relative flex items-center justify-center my-2">
+                    <div className="w-full border-t border-white/20"></div>
+                    <div className="relative px-2 text-sm text-white/50 bg-black/20">{t.orSeparator}</div>
+                  </div>
+                  <ProviderButton provider="email" icon={<Mail className="w-6 h-6" />} text={t.emailLogin} onClick={() => setView('email')} isLoading={false} />
+                  <ProviderButton provider="guest" icon={<User className="w-6 h-6" />} text={t.guestLogin} onClick={() => setView('guest')} isLoading={false} />
+                </motion.div>
+              )}
+              {view === 'email' && <EmailForm key="email" />}
+              {view === 'guest' && <GuestForm key="guest" />}
             </AnimatePresence>
           </Card>
         </motion.div>
       ) : (
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
-            <Card className="bg-white/10 backdrop-blur-md rounded-2xl shadow-xl p-8 w-full border-none text-center">
-                <img src={userData.profilePicture!} alt="Profile" className="w-24 h-24 rounded-full mx-auto border-4 border-white/30 object-cover shadow-lg"/>
-                <h2 className="text-2xl font-bold mt-4">{`${t.welcome}, ${userData.displayName}!`}</h2>
-                <p className="text-white/60 mb-6">{userData.email}</p>
-                <div className="flex gap-4">
-                    <Button className="flex-1 bg-white/10 hover:bg-white/20" onClick={() => window.location.reload()}><RefreshCw className="w-4 h-4 mr-2" />{t.cancelButton}</Button>
-                    <Button className="flex-1 bg-blue-500 hover:bg-blue-600" onClick={copyToClipboard}><Copy className="w-4 h-4 mr-2" />{t.copyButton}</Button>
-                </div>
-            </Card>
+          <Card className="bg-white/10 backdrop-blur-md rounded-2xl shadow-xl p-8 w-full border-none text-center">
+            <img src={userData.profilePicture!} alt="Profile" className="w-24 h-24 rounded-full mx-auto border-4 border-white/30 object-cover shadow-lg" />
+            <h2 className="text-2xl font-bold mt-4">{`${t.welcome}, ${userData.displayName}!`}</h2>
+            <p className="text-white/60 mb-6">{userData.email}</p>
+            <div className="flex gap-4">
+              <Button className="flex-1 bg-white/10 hover:bg-white/20" onClick={handleSignOut}><RefreshCw className="w-4 h-4 mr-2" />{t.cancelButton}</Button>
+              <Button className="flex-1 bg-blue-500 hover:bg-blue-600" onClick={copyToClipboard}><Copy className="w-4 h-4 mr-2" />{t.copyButton}</Button>
+            </div>
+          </Card>
         </motion.div>
       )}
     </div>
