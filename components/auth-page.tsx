@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { createClient } from "@supabase/supabase-js"
+import { createClient, type User } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { motion, AnimatePresence } from "framer-motion"
-import { Copy, RefreshCw, Mail, KeyRound, ArrowLeft, Send, CheckCircle, User, Lock, Image } from "lucide-react"
+import { RefreshCw, Mail, KeyRound, ArrowLeft, Send, CheckCircle, User as UserIcon, Lock, Image as ImageIcon } from "lucide-react"
 import { Toaster, toast } from "react-hot-toast"
 
 // --- SUPABASE CONFIG ---
@@ -88,7 +88,7 @@ const translations = {
   },
 }
 
-type UserData = {
+export type UserData = {
   uid: string
   displayName: string | null
   email: string | null
@@ -99,11 +99,18 @@ type UserData = {
 
 type ViewState = 'login' | 'reset_request' | 'update_password' | 'dashboard' | 'edit_profile' | 'change_password';
 
-export default function AuthPage() {
+// Props arayüzü eklendi
+interface AuthPageProps {
+  onLoginSuccess?: (data: UserData) => void;
+}
+
+export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
   const [userData, setUserData] = useState<UserData | null>(null)
   const [language, setLanguage] = useState("en")
   const [isLoading, setIsLoading] = useState<string | null>(null)
   const [view, setView] = useState<ViewState>('login')
+
+  // Form State
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -113,21 +120,8 @@ export default function AuthPage() {
 
   const t = translations[language as keyof typeof translations]
 
-  // API Callback - useCallback ile sarmalayalım
-  const loginCallback = useCallback(async (userData: UserData) => {
-    try {
-      await fetch("https://geogame-api.keremkk.com.tr/api/login/callback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(userData),
-      })
-    } catch (error) {
-      console.error("Callback error:", error)
-    }
-  }, [])
-
-  // Kullanıcı Verisini İşle - useCallback ile sarmalayalım
-  const processUser = useCallback((user: any, accessToken?: string, refreshToken?: string) => {
+  // Kullanıcı Verisini İşle
+  const processUser = useCallback((user: User, accessToken?: string, refreshToken?: string) => {
     const metadata = user.user_metadata || {}
     const userDataObj: UserData = {
       uid: user.id,
@@ -137,11 +131,16 @@ export default function AuthPage() {
       accessToken: accessToken,
       refreshToken: refreshToken
     }
+
     setUserData(userDataObj)
     setDisplayName(userDataObj.displayName || '')
     setProfileUrl(userDataObj.profilePicture || '')
-    loginCallback(userDataObj)
-  }, [loginCallback])
+
+    // Eğer parent component bir callback gönderdiyse onu tetikle
+    if (onLoginSuccess) {
+      onLoginSuccess(userDataObj)
+    }
+  }, [onLoginSuccess])
 
   useEffect(() => {
     // Dil ayarı
@@ -152,7 +151,8 @@ export default function AuthPage() {
       const message = navigator.language.startsWith("tr")
         ? "Artık oturum açabilirsiniz!"
         : "You can now sign in!";
-      toast.success(message, { duration: 4000 });
+      // Strict Mode'da double toast olmaması için kontrol edilebilir ama şu an kalsın
+      toast.success(message, { duration: 4000, id: 'welcome-toast' });
       setShowWelcome(false);
     }
 
@@ -160,7 +160,7 @@ export default function AuthPage() {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
-        processUser(session.user, session.access_token, session.refresh_token)
+        processUser(session.user, session.access_token || undefined, session.refresh_token || undefined)
         if (view === 'login') setView('dashboard')
       }
     }
@@ -170,10 +170,10 @@ export default function AuthPage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "PASSWORD_RECOVERY") {
         setView('update_password')
-        toast.success(t.updatePasswordDesc)
+        toast.success(translations[navigator.language.startsWith("tr") ? "tr" : "en"].updatePasswordDesc)
       } else if (event === "SIGNED_IN" && session?.user) {
         if (view !== 'update_password') {
-          processUser(session.user, session.access_token, session.refresh_token)
+          processUser(session.user, session.access_token || undefined, session.refresh_token || undefined)
           setView('dashboard')
         }
       } else if (event === "SIGNED_OUT") {
@@ -183,7 +183,8 @@ export default function AuthPage() {
     })
 
     return () => subscription.unsubscribe()
-  }, [view, processUser, t.updatePasswordDesc, showWelcome])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processUser, view]) // showWelcome bağımlılıktan çıkarıldı, sadece mountta çalışmalı
 
   // --- İŞLEMLER ---
   const emailSignIn = async () => {
@@ -204,7 +205,14 @@ export default function AuthPage() {
     if (!email || !password) return
     setIsLoading("signup")
     try {
-      const { data, error } = await supabase.auth.signUp({ email, password })
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          // E-posta doğrulama linki tıklandığında döneceği yer
+          emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
+        }
+      })
       if (error) throw error
       if (data.user && !data.session) toast.success(t.checkEmail)
       else toast.success(t.loginSuccess)
@@ -244,7 +252,7 @@ export default function AuthPage() {
       // ✅ Şifre güncellendi, kullanıcı verilerini al
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
-        processUser(session.user, session.access_token, session.refresh_token)
+        processUser(session.user, session.access_token || undefined, session.refresh_token || undefined)
         setView('dashboard')
       }
     } catch (error: any) {
@@ -278,11 +286,14 @@ export default function AuthPage() {
 
       // Kullanıcı verisini güncelle
       if (userData) {
-        setUserData({
+        const updatedData = {
           ...userData,
           displayName: displayName,
           profilePicture: profileUrl || userData.profilePicture
-        })
+        }
+        setUserData(updatedData)
+        // Callback'i güncelleme durumunda da tetikleyebiliriz
+        if (onLoginSuccess) onLoginSuccess(updatedData)
       }
 
       toast.success(t.profileUpdated)
@@ -433,12 +444,19 @@ export default function AuthPage() {
 
               {view === 'dashboard' && (
                 <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
-                  <img src={userData.profilePicture!} alt="Profile" className="w-24 h-24 rounded-full mx-auto border-4 border-white/30 object-cover shadow-lg" />
+                  <img
+                    src={userData.profilePicture!}
+                    alt="Profile"
+                    className="w-24 h-24 rounded-full mx-auto border-4 border-white/30 object-cover shadow-lg"
+                    onError={(e) => {
+                      e.currentTarget.src = `https://api.dicebear.com/8.x/initials/svg?seed=${userData?.uid}`
+                    }}
+                  />
                   <h2 className="text-2xl font-bold mt-4">{`${t.welcome}, ${userData.displayName}!`}</h2>
                   <p className="text-white/60 mb-6">{userData.email}</p>
                   <div className="space-y-3">
                     <Button className="w-full bg-white/10 hover:bg-white/20" onClick={() => setView('edit_profile')}>
-                      <User className="w-4 h-4 mr-2" />{t.editProfile}
+                      <UserIcon className="w-4 h-4 mr-2" />{t.editProfile}
                     </Button>
                     <Button className="w-full bg-white/10 hover:bg-white/20" onClick={() => setView('change_password')}>
                       <Lock className="w-4 h-4 mr-2" />{t.changePassword}
@@ -462,7 +480,7 @@ export default function AuthPage() {
                   </div>
                   <div className="space-y-4">
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20} />
+                      <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20} />
                       <Input
                         value={displayName}
                         onChange={(e) => setDisplayName(e.target.value)}
@@ -472,7 +490,7 @@ export default function AuthPage() {
                       />
                     </div>
                     <div className="relative">
-                      <Image className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20} />
+                      <ImageIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50" size={20} />
                       <Input
                         value={profileUrl}
                         onChange={(e) => setProfileUrl(e.target.value)}
