@@ -209,11 +209,21 @@ export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
         email,
         password,
         options: {
-          // E-posta doğrulama linki tıklandığında döneceği yer
           emailRedirectTo: typeof window !== 'undefined' ? window.location.origin : undefined
         }
       })
       if (error) throw error
+
+      // ✅ Yeni kullanıcı için profiles tablosuna kayıt ekle
+      if (data.user) {
+        await supabase.from('profiles').insert({
+          uid: data.user.id,
+          email: data.user.email,
+          full_name: data.user.email?.split('@')[0] || 'User',
+          avatar_url: `https://api.dicebear.com/8.x/initials/svg?seed=${data.user.id}`
+        })
+      }
+
       if (data.user && !data.session) toast.success(t.checkEmail)
       else toast.success(t.loginSuccess)
     } catch (error: any) {
