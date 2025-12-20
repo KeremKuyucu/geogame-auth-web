@@ -286,15 +286,30 @@ export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
   const updateProfile = async () => {
     setIsLoading("update_profile")
     try {
-      const { error } = await supabase.auth.updateUser({
+      // 1️⃣ Auth metadata'yı güncelle
+      const { error: authError } = await supabase.auth.updateUser({
         data: {
           full_name: displayName,
           avatar_url: profileUrl
         }
       })
-      if (error) throw error
+      if (authError) throw authError
 
-      // Kullanıcı verisini güncelle
+      // 2️⃣ Profiles tablosunu güncelle (upsert)
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({
+          uid: userData?.uid,
+          email: userData?.email,
+          full_name: displayName,
+          avatar_url: profileUrl
+        }, {
+          onConflict: 'uid' // uid'ye göre güncelleme yap
+        })
+
+      if (profileError) throw profileError
+
+      // 3️⃣ Local state'i güncelle
       if (userData) {
         const updatedData = {
           ...userData,
@@ -302,7 +317,6 @@ export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
           profilePicture: profileUrl || userData.profilePicture
         }
         setUserData(updatedData)
-        // Callback'i güncelleme durumunda da tetikleyebiliriz
         if (onLoginSuccess) onLoginSuccess(updatedData)
       }
 
