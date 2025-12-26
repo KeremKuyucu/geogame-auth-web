@@ -220,7 +220,7 @@ export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
           uid: data.user.id,
           email: data.user.email,
           full_name: data.user.email?.split('@')[0] || 'User',
-          avatar_url: `https://api.dicebear.com/8.x/initials/svg?seed=${data.user.id}`
+          avatar_url: `https://api.dicebear.com/8.x/initials/png?seed=${data.user.id}`
         })
       }
 
