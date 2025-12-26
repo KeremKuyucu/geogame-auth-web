@@ -482,7 +482,7 @@ export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
                     alt="Profile"
                     className="w-24 h-24 rounded-full mx-auto border-4 border-white/30 object-cover shadow-lg"
                     onError={(e) => {
-                      e.currentTarget.src = `https://api.dicebear.com/8.x/initials/svg?seed=${userData?.uid}`
+                      e.currentTarget.src = `https://api.dicebear.com/8.x/initials/png?seed=${userData?.displayName}`
                     }}
                   />
                   <h2 className="text-2xl font-bold mt-4">{`${t.welcome}, ${userData.displayName}!`}</h2>
@@ -535,7 +535,7 @@ export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
                     {profileUrl && (
                       <div className="flex justify-center">
                         <img src={profileUrl} alt="Preview" className="w-20 h-20 rounded-full border-2 border-white/30 object-cover" onError={(e) => {
-                          e.currentTarget.src = `https://api.dicebear.com/8.x/initials/svg?seed=${userData?.uid}`
+                          e.currentTarget.src = `https://api.dicebear.com/8.x/initials/png?seed=${userData?.displayName}`
                         }} />
                       </div>
                     )}
