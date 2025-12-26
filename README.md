@@ -1,1 +1,1 @@
-Geogame oyunun oturum açması için internet sitesi
+Keremkk Service için ortak auth sitesi kayıt ol şifreni değiştir profil resmini ayarla
