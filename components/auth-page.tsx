@@ -127,7 +127,7 @@ export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
       uid: user.id,
       displayName: metadata.full_name || user.email?.split('@')[0] || "User",
       email: user.email || null,
-      profilePicture: metadata.avatar_url || `https://api.dicebear.com/8.x/initials/svg?seed=${user.id}`,
+      profilePicture: metadata.avatar_url || `https://api.dicebear.com/8.x/initials/png?seed=${displayName}`,
       accessToken: accessToken,
       refreshToken: refreshToken
     }
@@ -220,7 +220,7 @@ export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
           uid: data.user.id,
           email: data.user.email,
           full_name: data.user.email?.split('@')[0] || 'User',
-          avatar_url: `https://api.dicebear.com/8.x/initials/png?seed=${data.user.id}`
+          avatar_url: `https://api.dicebear.com/8.x/initials/png?seed=${data.full_name}`
         })
       }
 
@@ -286,11 +286,21 @@ export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
   const updateProfile = async () => {
     setIsLoading("update_profile")
     try {
+      // ✅ Eğer avatar varsayılan değerlerden biriyse, yeni isme göre güncelle
+      let finalAvatarUrl = profileUrl
+      const isDefaultAvatar =
+        profileUrl.includes('api.dicebear.com/8.x/initials') ||
+        profileUrl === 'https://geogame-cdn.keremkk.com.tr/anon.png'
+
+      if (isDefaultAvatar) {
+        finalAvatarUrl = `https://api.dicebear.com/8.x/initials/png?seed=${displayName || userData?.uid}`
+      }
+
       // 1️⃣ Auth metadata'yı güncelle
       const { error: authError } = await supabase.auth.updateUser({
         data: {
           full_name: displayName,
-          avatar_url: profileUrl
+          avatar_url: finalAvatarUrl
         }
       })
       if (authError) throw authError
@@ -302,10 +312,8 @@ export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
           uid: userData?.uid,
           email: userData?.email,
           full_name: displayName,
-          avatar_url: profileUrl
-        }, {
-          onConflict: 'uid' // uid'ye göre güncelleme yap
-        })
+          avatar_url: finalAvatarUrl
+        }, { onConflict: 'uid' }) // uid'ye göre güncelleme yap
 
       if (profileError) throw profileError
 
@@ -314,9 +322,10 @@ export default function AuthPage({ onLoginSuccess }: AuthPageProps) {
         const updatedData = {
           ...userData,
           displayName: displayName,
-          profilePicture: profileUrl || userData.profilePicture
+          profilePicture: finalAvatarUrl || userData.profilePicture
         }
         setUserData(updatedData)
+        setProfileUrl(finalAvatarUrl) // ✅ Input değerini de güncelle
         if (onLoginSuccess) onLoginSuccess(updatedData)
       }
 
